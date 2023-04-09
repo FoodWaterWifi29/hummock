@@ -168,10 +168,21 @@ enum Rule {
 impl ParseRule<Symbol, Rule> for Rule {
     fn root() -> Rule { Rule::ROOT }
 
-    fn execute(&self, symbol: Symbol, stack: List<SymbolOrRule<Symbol, Rule>>) -> List<SymbolOrRule<Symbol, Rule>> {
-        match self {
-            _ => List::cons(SymbolOrRule::Symbol(Symbol::SPACE), stack)
-        }
+    fn execute(&self, stack: List<SymbolOrRule<Symbol, Rule>>) -> Vec<List<SymbolOrRule<Symbol, Rule>>> {
+        let mut result: Vec<List<SymbolOrRule<Symbol, Rule>>> = Vec::new();
+
+        //match (self, stack.state()) {
+            //(ROOT, NonEmptyList(head, tail)) => (),
+
+        //}
+        //match (self, first) {
+        //    (ROOT, Symbol:: => {
+        //        result.push(stack);
+        //    }
+        //    _ => panic!()
+        //};
+
+        result
     }
 }
 

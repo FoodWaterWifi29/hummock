@@ -19,7 +19,7 @@ pub trait ParseRule<SymbolType, RuleType>
     where SymbolType: Copy, RuleType: Copy
 {
     fn root() -> RuleType;
-    fn execute(&self, symbol: SymbolType, stack: List<SymbolOrRule<SymbolType, RuleType>>) -> List<SymbolOrRule<SymbolType, RuleType>>;
+    fn execute(&self, stack: List<SymbolOrRule<SymbolType, RuleType>>) -> Vec<List<SymbolOrRule<SymbolType, RuleType>>>;
 }
 
 #[derive(Copy, Clone)]
@@ -76,7 +76,7 @@ pub enum ReadResult<SymbolType, RuleType>
 }
 
 impl<SymbolType, RuleType> ParseMachine<SymbolType, RuleType>
-    where SymbolType: Copy, SymbolType: 'static, RuleType: Copy, RuleType: 'static, RuleType: ParseRule<SymbolType, RuleType>
+    where SymbolType: Copy + Eq, SymbolType: 'static, RuleType: Copy, RuleType: 'static, RuleType: ParseRule<SymbolType, RuleType>
 {
     pub fn new() {
         // Create a new parse machine. Its branches will contain one branch containing the root rule on the stack.
@@ -87,18 +87,50 @@ impl<SymbolType, RuleType> ParseMachine<SymbolType, RuleType>
         };
     }
 
-    pub fn read(&mut self, symbol: SymbolType) -> ReadResult<SymbolType, RuleType>
+    pub fn read(&mut self, input: SymbolType) -> ReadResult<SymbolType, RuleType>
     {        
         let mut num_accepted_branches: usize = 0;
 
+        let mut branches_to_add: Vec<List<SymbolOrRule<SymbolType, RuleType>>> = Vec::new();
+
         for branch in &mut self.branches {
-            let (new_stack, result) = match std::mem::take(&mut branch.stack).state() {
+
+            // Skip this branch if it is dead.
+            if !branch.alive { continue }
+            
+            // Handle the case where we have a symbol on top of the stack.
+            match branch.stack.state() {
+                NonEmptyList(&head, tail) => match head {
+                    SymbolOrRule::Symbol(symbol) =>
+                        if input == symbol {
+
+                            // The symbol matched so we pop it off the stack.
+                            branch.stack = tail;
+                            continue
+                        } else {
+
+                            // The branch hit a symbol it could not parse, so it should be considered dead.
+                            branch.alive = false;
+                            continue
+                        },
+                    SymbolOrRule::Rule(_) => ()
+                },
+                EmptyList => {
+
+                    // The branch is alive and empty--this means it is accepted.
+                    num_accepted_branches += 1;
+                    continue
+                }
+            };
+
+            // Handle the case where we have a rule on top of the stack.
+            let (resulting_branches, result) = match std::mem::take(&mut branch.stack).state() {
                 NonEmptyList(head, tail) => {
                     (
-                        // new_stack
+                        // resulting_branches
                         match head {
                             SymbolOrRule::Symbol(_) => None,
-                            SymbolOrRule::Rule(rule) => Some(rule.execute(symbol, tail))
+                            SymbolOrRule::Rule(rule) => Some(rule.execute(tail))
                         },
 
                         // result
@@ -110,21 +142,34 @@ impl<SymbolType, RuleType> ParseMachine<SymbolType, RuleType>
                 EmptyList => (None, None)
             };
 
-            if let Some(new_stack) = new_stack {
-                branch.stack = new_stack;
+            // The first resulting branch replaces this branch, while the remaining branches
+            // are queued to be added to the parse machine.
+            if let Some(resulting_branches) = resulting_branches {
+                match resulting_branches.split_first() {
+                    Some((first, rest)) => {
+                        branch.stack = first.clone();
+                        branches_to_add.extend_from_slice(rest);
+                    },
+                    None => ()
+                }
             }
 
             if let Some(result) = result {
                 branch.parsed = List::cons(result, std::mem::take(&mut branch.parsed));
             }
 
-            if branch.is_accepted() {
+            if branch.alive && branch.stack.is_empty() {
                 num_accepted_branches += 1;
             }
         };
 
         // Prune dead branches. Accepted branches won't be pruned because they are still alive.
         self.branches.discard(|branch| !branch.alive);
+
+        // Add the branches that were created from branching rules.
+        for stack in branches_to_add {
+            self.branches.push(ParseBranch::from_stack(stack));
+        }
 
         match (self.branches.len(), num_accepted_branches) {
 
@@ -171,15 +216,19 @@ impl<SymbolType, RuleType> ParseBranch<SymbolType, RuleType>
         }
     }
 
+    fn from_stack(stack: List<SymbolOrRule<SymbolType, RuleType>>) -> Self {
+        Self{
+            stack: stack,
+            parsed: List::EMPTY,
+            alive: true
+        }
+    }
+
     fn clone(&self) -> Self {
         Self{
             stack: self.stack.clone(),
             parsed: self.parsed.clone(),
             alive: self.alive
         }
-    }
-
-    fn is_accepted(&self) -> bool {
-        self.alive && self.stack.is_empty()
     }
 }
