@@ -1,0 +1,126 @@
+# ParserGen Language Specification Format
+
+symbols
+	ULETTER_A, ULETTER_B, ULETTER_C, ULETTER_D, ULETTER_E, ULETTER_F,
+	ULETTER_G, ULETTER_H, ULETTER_I, ULETTER_J, ULETTER_K, ULETTER_L,
+	ULETTER_M, ULETTER_N, ULETTER_O, ULETTER_P, ULETTER_Q, ULETTER_R,
+	ULETTER_S, ULETTER_T, ULETTER_U, ULETTER_V, ULETTER_W, ULETTER_X,
+	ULETTER_Y, ULETTER_Z,
+	
+	LETTER_A, LETTER_B, LETTER_C, LETTER_D, LETTER_E, LETTER_F,
+	LETTER_G, LETTER_H, LETTER_I, LETTER_J, LETTER_K, LETTER_L,
+	LETTER_M, LETTER_N, LETTER_O, LETTER_P, LETTER_Q, LETTER_R,
+	LETTER_S, LETTER_T, LETTER_U, LETTER_V, LETTER_W, LETTER_X,
+	LETTER_Y, LETTER_Z,
+	
+	DIGIT_0,
+	DIGIT_1, DIGIT_2, DIGIT_3,
+	DIGIT_4, DIGIT_5, DIGIT_6,
+	DIGIT_7, DIGIT_8, DIGIT_9,
+	
+	UNDERSCORE,
+	COMMA, SEMICOLON,
+	LEFT_PAREN, RIGHT_PAREN,
+	EQUAL_SIGN,
+	QUESTION_MARK, ASTERISK, PLUS_SIGN,
+	PIPE,
+	POUND_SIGN,
+	
+	SPACE, TAB, NEWLINE,
+	
+	PERIOD, SLASH, DASH, COLON;
+
+grammar
+	root = file;
+
+	###############
+	### GENERIC ###
+	###############
+	
+	letter = lower_letter | upper_letter;
+	lower_letter = LETTER_A ... LETTER_Z;
+	upper_letter = ULETTER_A ... ULETTER_Z;
+	digit = DIGIT_0 ... DIGIT_9;
+	ellipsis = PERIOD PERIOD PERIOD;
+	
+	whitespace = (SPACE | TAB) ?whitespace;
+	line_end = +(?whitespace ?comment NEWLINE);
+	ws_or_le = whitespace | line_end;
+	
+	comma_sep = ?ws_or_le COMMA ?ws_or_le;
+	semicolon_sep = ?ws_or_le SEMICOLON ?ws_or_le;
+	
+	lower_name = lower_letter *(lower_letter | digit | UNDERSCORE);
+	upper_name = upper_letter *(upper_letter | digit | UNDERSCORE);
+	
+	###############
+	### COMMENT ###
+	###############
+	
+	# TODO: It would be nice if comments could be handled using a separate parser.
+	
+	comment = POUND_SIGN ?comment_text;
+		comment_text = +(whitespace | letter | digit | comment_punctuation);
+		comment_punctuation =
+			LEFT_PAREN | RIGHT_PAREN | SLASH | DASH | UNDERSCORE |
+			PERIOD | COLON | SEMICOLON | QUESTION_MARK;
+	
+	############
+	### FILE ###
+	############
+	
+	file =
+		?line_end the_word_symbols line_end
+		symbol_list
+		line_end the_word_grammar line_end
+		rule_list line_end;
+	
+	the_word_symbols = LETTER_S LETTER_Y LETTER_M LETTER_B LETTER_O LETTER_L LETTER_S;
+	the_word_grammar = LETTER_G LETTER_R LETTER_A LETTER_M LETTER_M LETTER_A LETTER_R;
+	
+	###################
+	### SYMBOL LIST ###
+	###################
+	
+	symbol_list = ?ws_or_le symbol_name (semicolon_sep | comma_sep symbol_list);
+	symbol_name = upper_name;
+	
+	the_word_binary = LETTER_B LETTER_I LETTER_N LETTER_A LETTER_R LETTER_Y;
+	
+	#################
+	### RULE LIST ###
+	#################
+	
+	rule_list = ?ws_or_le rule semicolon_sep ?rule_list;
+	rule = rule_name ?ws_or_le EQUAL_SIGN ?ws_or_le rule_expr;
+	rule_name = lower_name;
+	
+	rule_expr = 
+		rule_seq_expr |
+		rule_subst_expr |
+		rule_paren_expr |
+		rule_opt_expr |
+		rule_star_expr |
+		rule_plus_expr |
+		rule_union_expr |
+		rule_range_expr;
+
+	rule_seq_expr = rule_expr +(ws_or_le rule_expr);
+
+	rule_subst_expr = rule_symbol_subst_expr | rule_rule_subst_expr;
+	rule_symbol_subst_expr = upper_name;
+	rule_rule_subst_expr = lower_name;
+
+	rule_paren_expr = LEFT_PAREN ?ws_or_le rule_expr ?ws_or_le RIGHT_PAREN;
+	
+	rule_opt_expr = QUESTION_MARK (rule_subst_expr | rule_paren_expr);
+	rule_star_expr = ASTERISK (rule_subst_expr | rule_paren_expr);
+	rule_plus_expr = PLUS_SIGN (rule_subst_expr | rule_paren_expr);
+	
+	rule_union_expr = rule_union_expr_arg +(union_operator rule_union_expr_arg);
+		rule_union_expr_arg = rule_subst_expr | rule_opt_expr | rule_paren_expr;
+		union_operator = ?ws_or_le PIPE ?ws_or_le;
+	
+	rule_range_expr = rule_symbol_subst_expr range_operator rule_symbol_subst_expr;
+		range_operator = ?ws_or_le ellipsis ?ws_or_le;
+	
